@@ -42,7 +42,7 @@
 
 namespace rm_shooter_controllers
 {
-bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh)
+bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh)  //使用ROS参数服务器中的参数初始化config_结构体，该结构体存储了控制器的各项配置参数。
 {
   config_ = { .block_effort = getParam(controller_nh, "block_effort", 0.),
               .block_speed = getParam(controller_nh, "block_speed", 0.),
@@ -53,26 +53,26 @@ bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& ro
               .forward_push_threshold = getParam(controller_nh, "forward_push_threshold", 0.1),
               .exit_push_threshold = getParam(controller_nh, "exit_push_threshold", 0.1),
               .extra_wheel_speed = getParam(controller_nh, "extra_wheel_speed", 0.) };
-  config_rt_buffer.initRT(config_);
-  push_per_rotation_ = getParam(controller_nh, "push_per_rotation", 0);
+  config_rt_buffer.initRT(config_); //初始化实时缓冲区，用于在实时控制循环中读写参数。
+  push_per_rotation_ = getParam(controller_nh, "push_per_rotation", 0); //初始化每次旋转的推动量和推动轮速的阈值参数。
   push_wheel_speed_threshold_ = getParam(controller_nh, "push_wheel_speed_threshold", 0.);
 
-  cmd_subscriber_ = controller_nh.subscribe<rm_msgs::ShootCmd>("command", 1, &Controller::commandCB, this);
+  cmd_subscriber_ = controller_nh.subscribe<rm_msgs::ShootCmd>("command", 1, &Controller::commandCB, this); //初始化用于接收射击命令和发布射击状态的ROS订阅器和实时发布器。
   shoot_state_pub_.reset(new realtime_tools::RealtimePublisher<rm_msgs::ShootState>(controller_nh, "state", 10));
   // Init dynamic reconfigure
-  d_srv_ = new dynamic_reconfigure::Server<rm_shooter_controllers::ShooterConfig>(controller_nh);
+  d_srv_ = new dynamic_reconfigure::Server<rm_shooter_controllers::ShooterConfig>(controller_nh); //初始化动态重新配置服务器，以便在运行时动态更改控制器的参数。设置回调函数reconfigCB。
   dynamic_reconfigure::Server<rm_shooter_controllers::ShooterConfig>::CallbackType cb = [this](auto&& PH1, auto&& PH2) {
     reconfigCB(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2));
   };
   d_srv_->setCallback(cb);
 
-  ros::NodeHandle nh_friction_l = ros::NodeHandle(controller_nh, "friction_left");
+  ros::NodeHandle nh_friction_l = ros::NodeHandle(controller_nh, "friction_left"); //创建用于左右摩擦控制和扳机控制的ROS节点句柄。
   ros::NodeHandle nh_friction_r = ros::NodeHandle(controller_nh, "friction_right");
   ros::NodeHandle nh_trigger = ros::NodeHandle(controller_nh, "trigger");
-  effort_joint_interface_ = robot_hw->get<hardware_interface::EffortJointInterface>();
+  effort_joint_interface_ = robot_hw->get<hardware_interface::EffortJointInterface>(); //获取机器人硬件接口中的力矩关节接口。
   return ctrl_friction_l_.init(effort_joint_interface_, nh_friction_l) &&
          ctrl_friction_r_.init(effort_joint_interface_, nh_friction_r) &&
-         ctrl_trigger_.init(effort_joint_interface_, nh_trigger);
+         ctrl_trigger_.init(effort_joint_interface_, nh_trigger);  //初始化摩擦控制器并返回初始化结果。
 }
 
 void Controller::starting(const ros::Time& /*time*/)
@@ -83,9 +83,9 @@ void Controller::starting(const ros::Time& /*time*/)
 
 void Controller::update(const ros::Time& time, const ros::Duration& period)
 {
-  cmd_ = *cmd_rt_buffer_.readFromRT();
+  cmd_ = *cmd_rt_buffer_.readFromRT(); //从实时缓冲区中读取当前控制周期内的射击命令和配置参数。
   config_ = *config_rt_buffer.readFromRT();
-  if (state_ != cmd_.mode)
+  if (state_ != cmd_.mode)  //判断是否需要进行状态切换
   {
     if (state_ != BLOCK)
       if ((state_ != PUSH || cmd_.mode != READY) ||
@@ -115,7 +115,7 @@ void Controller::update(const ros::Time& time, const ros::Duration& period)
       block(time, period);
       break;
   }
-  if (shoot_state_pub_->trylock())
+  if (shoot_state_pub_->trylock())   //发布当前射击状态
   {
     shoot_state_pub_->msg_.stamp = time;
     shoot_state_pub_->msg_.state = state_;
@@ -162,10 +162,10 @@ void Controller::push(const ros::Time& time, const ros::Duration& period)
         ctrl_friction_l_.joint_.getVelocity() > M_PI &&
         ctrl_friction_r_.joint_.getVelocity() <= push_wheel_speed_threshold_ * ctrl_friction_r_.command_ &&
         ctrl_friction_r_.joint_.getVelocity() < -M_PI)) &&
-      (time - last_shoot_time_).toSec() >= 1. / cmd_.hz)
+      (time - last_shoot_time_).toSec() >= 1. / cmd_.hz)  //判断是否满足射击条件，包括推进轮速为零或左右摩擦轮达到指定速度阈值，以及距上次射击的时间超过指定间隔。
   {  // Time to shoot!!!
     if (std::fmod(std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.getPosition()), 2. * M_PI) <
-        config_.forward_push_threshold)
+        config_.forward_push_threshold)  //满足射击条件，调整扳机位置并将当前时间记录为射击时间
     {
       ctrl_trigger_.setCommand(ctrl_trigger_.command_struct_.position_ -
                                2. * M_PI / static_cast<double>(push_per_rotation_));
@@ -175,14 +175,14 @@ void Controller::push(const ros::Time& time, const ros::Duration& period)
     if ((ctrl_trigger_.joint_.getEffort() < -config_.block_effort &&
          std::abs(ctrl_trigger_.joint_.getVelocity()) < config_.block_speed) ||
         ((time - last_shoot_time_).toSec() > 1 / cmd_.hz &&
-         std::abs(ctrl_trigger_.joint_.getVelocity()) < config_.block_speed))
+         std::abs(ctrl_trigger_.joint_.getVelocity()) < config_.block_speed))  //阻塞检查
     {
       if (!maybe_block_)
       {
         block_time_ = time;
         maybe_block_ = true;
       }
-      if ((time - block_time_).toSec() >= config_.block_duration)
+      if ((time - block_time_).toSec() >= config_.block_duration) //阻塞处理
       {
         state_ = BLOCK;
         state_changed_ = true;
@@ -207,7 +207,7 @@ void Controller::block(const ros::Time& time, const ros::Duration& period)
   }
   if (std::abs(ctrl_trigger_.command_struct_.position_ - ctrl_trigger_.joint_.getPosition()) <
           config_.anti_block_threshold ||
-      (time - last_block_time_).toSec() > config_.block_overtime)
+      (time - last_block_time_).toSec() > config_.block_overtime) //判断是否满足解除阻塞的条件，包括扳机位置的偏移小于指定阈值或者超过阻塞超时时间。
   {
     normalize();
 
@@ -232,7 +232,7 @@ void Controller::normalize()
 void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint32_t /*level*/)
 {
   ROS_INFO("[Shooter] Dynamic params change");
-  if (!dynamic_reconfig_initialized_)
+  if (!dynamic_reconfig_initialized_) //若动态参数尚未初始化，从非实时缓冲区中读取初始配置参数，并将其赋值给动态参数。
   {
     Config init_config = *config_rt_buffer.readFromNonRT();  // config init use yaml
     config.block_effort = init_config.block_effort;
@@ -255,7 +255,7 @@ void Controller::reconfigCB(rm_shooter_controllers::ShooterConfig& config, uint3
                         .forward_push_threshold = config.forward_push_threshold,
                         .exit_push_threshold = config.exit_push_threshold,
                         .extra_wheel_speed = config.extra_wheel_speed };
-  config_rt_buffer.writeFromNonRT(config_non_rt);
+  config_rt_buffer.writeFromNonRT(config_non_rt); //将动态重配置得到的参数写入实时缓冲区，以便在控制周期内读取最新的配置参数。
 }
 
 }  // namespace rm_shooter_controllers
