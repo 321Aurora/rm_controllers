@@ -44,62 +44,68 @@ namespace rm_calibration_controllers
 bool MechanicalCalibrationController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh,
                                            ros::NodeHandle& controller_nh)
 {
-  CalibrationBase::init(robot_hw, root_nh, controller_nh);
-  is_return_ = is_center_ = false;
-  controller_nh.getParam("center", is_center_);
-  if (!controller_nh.getParam("velocity/vel_threshold", velocity_threshold_))
+  CalibrationBase::init(
+      robot_hw, root_nh,
+      controller_nh);  // 调用 CalibrationBase 类的 init 方法，传递机器人硬件接口、全局节点句柄和控制器节点句柄
+  is_return_ = is_center_ = false;               // 初始化 is_return_ 和 is_center_ 为 false
+  controller_nh.getParam("center", is_center_);  // 从控制器节点句柄获取参数 "center"，并将其值赋给 is_center_
+  if (!controller_nh.getParam("velocity/vel_threshold",
+                              velocity_threshold_))  // 从控制器节点句柄获取参数，如果获取失败则报错并返回 false
   {
     ROS_ERROR("Velocity threshold was not specified (namespace: %s)", controller_nh.getNamespace().c_str());
     return false;
   }
-  if (velocity_threshold_ < 0)
+  if (velocity_threshold_ < 0)  // 如果速度阈值为负数，将其取绝对值并报错
   {
     velocity_threshold_ *= -1.;
     ROS_ERROR("Negative velocity threshold is not supported for joint %s. Making the velocity threshold positive.",
               velocity_ctrl_.getJointName().c_str());
   }
-  if (controller_nh.hasParam("return"))
+  if (controller_nh.hasParam("return"))  // 如果控制器节点句柄有参数 "return"
   {
-    ros::NodeHandle nh_return(controller_nh, "return");
-    position_ctrl_.init(robot_hw->get<hardware_interface::EffortJointInterface>(), nh_return);
-    if (!nh_return.getParam("target_position", target_position_))
+    ros::NodeHandle nh_return(controller_nh, "return");  // 在控制器节点句柄下创建名为 "return" 的子节点句柄
+    position_ctrl_.init(robot_hw->get<hardware_interface::EffortJointInterface>(),
+                        nh_return);  // 使用 "return" 子节点句柄初始化 position_ctrl_ 对象
+    if (!nh_return.getParam("target_position",
+                            target_position_))  // 从 "return" 子节点句柄获取参数，如果获取失败则报错并返回 false
     {
       ROS_ERROR("Position value was not specified (namespace: %s)", nh_return.getNamespace().c_str());
       return false;
     }
-    if (!controller_nh.getParam("pos_threshold", position_threshold_))
+    if (!controller_nh.getParam("pos_threshold",
+                                position_threshold_))  // 从控制器节点句柄获取参数，如果获取失败则报错并返回 false
     {
       ROS_ERROR("Position value was not specified (namespace: %s)", nh_return.getNamespace().c_str());
       return false;
     }
-    is_return_ = true;
-    calibration_success_ = false;
+    is_return_ = true;             // 将 is_return_ 设置为 true，表示进行返回操作
+    calibration_success_ = false;  // 将校准成功标志初始化为 false
   }
-  return true;
+  return true;  // 初始化成功，返回 true
 }
 
 void MechanicalCalibrationController::update(const ros::Time& time, const ros::Duration& period)
 {
   switch (state_)
   {
-    case INITIALIZED:
+    case INITIALIZED:  // 在初始化状态下，设置速度命令为预定义的搜索速度，并初始化倒计时，将状态设为正向移动
     {
       velocity_ctrl_.setCommand(velocity_search_);
       countdown_ = 100;
       state_ = MOVING_POSITIVE;
       break;
     }
-    case MOVING_POSITIVE:
+    case MOVING_POSITIVE:  // 在正向移动状态下，检查关节速度是否小于速度阈值且执行器未被停止
     {
       if (std::abs(velocity_ctrl_.joint_.getVelocity()) < velocity_threshold_ && !actuator_.getHalted())
         countdown_--;
       else
         countdown_ = 100;
-      if (countdown_ < 0)
+      if (countdown_ < 0)  // 如果倒计时小于 0
       {
-        velocity_ctrl_.setCommand(0);
-        if (!is_center_)
-        {
+        velocity_ctrl_.setCommand(0);  // 设置速度命令为 0
+        if (!is_center_)               // 如果不是居中校准
+        {  // 调整执行器偏移，标记关节已校准，并根据是否需要返回设置下一状态
           actuator_.setOffset(-actuator_.getPosition() + actuator_.getOffset());
           actuator_.setCalibrated(true);
           ROS_INFO("Joint %s calibrated", velocity_ctrl_.getJointName().c_str());
@@ -114,7 +120,7 @@ void MechanicalCalibrationController::update(const ros::Time& time, const ros::D
             calibration_success_ = true;
           }
         }
-        else
+        else  // 如果是居中校准，记录正向移动时的位置，重新初始化倒计时，设置速度命令为反向
         {
           positive_position_ = actuator_.getPosition();
           countdown_ = 100;
@@ -122,17 +128,18 @@ void MechanicalCalibrationController::update(const ros::Time& time, const ros::D
           state_ = MOVING_NEGATIVE;
         }
       }
-      velocity_ctrl_.update(time, period);
+      velocity_ctrl_.update(time, period);  // 更新速度控制器
       break;
     }
     case MOVING_NEGATIVE:
     {
-      if (std::abs(velocity_ctrl_.joint_.getVelocity()) < velocity_threshold_)
+      if (std::abs(velocity_ctrl_.joint_.getVelocity()) <
+          velocity_threshold_)  // 在反向移动状态下，检查关节速度是否小于速度阈值
         countdown_--;
       else
         countdown_ = 100;
-      if (countdown_ < 0)
-      {
+      if (countdown_ < 0)  // 如果倒计时小于 0
+      {  // 设置速度命令为 0，记录反向移动时的位置，调整执行器偏移，标记关节已校准，并根据是否需要返回设置下一状态
         velocity_ctrl_.setCommand(0);
         negative_position_ = actuator_.getPosition();
         actuator_.setOffset(-(positive_position_ + negative_position_) / 2 + actuator_.getOffset());
@@ -147,10 +154,10 @@ void MechanicalCalibrationController::update(const ros::Time& time, const ros::D
           calibration_success_ = true;
         }
       }
-      velocity_ctrl_.update(time, period);
+      velocity_ctrl_.update(time, period);  // 更新速度控制器
       break;
     }
-    case CALIBRATED:
+    case CALIBRATED:  // 在已校准状态下，根据是否需要返回判断校准成功，并更新位置或速度控制器
     {
       if (is_return_)
       {
