@@ -1,0 +1,8 @@
+<library path="lib/librm_position_controller">
+
+    <class name="rm_position_controller/RMPositionController" type="rm_position_controller::RMPositionController"
+           base_class_type="controller_interface::ControllerBase">
+        <description>
+        </description>
+    </class>
+</library>

@@ -1,0 +1,7 @@
+controllers:
+  image_transmission_controller:
+    type: rm_position_controller/RMPositionController
+    pos:
+      joint: "image_transmission_joint"
+      pid: { p: 8.0, i: 0.0, d: 0.5, i_clamp_max: 0.0, i_clamp_min: 0.0, antiwindup: true, publish_state: true }
+      threshold: 0.3
