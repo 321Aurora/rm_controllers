@@ -56,8 +56,10 @@ namespace rm_gimbal_controllers
 struct Config
 {
   double resistance_coff_qd_10, resistance_coff_qd_15, resistance_coff_qd_16, resistance_coff_qd_18,
-      resistance_coff_qd_30, g, delay, dt, timeout, ban_shoot_duration, gimbal_switch_duration, max_switch_angle,
-      min_switch_angle, max_chassis_angular_vel, track_rotate_target_delay, track_move_target_delay;
+      resistance_coff_qd_30, g, delay, wait_next_armor_delay, wait_diagonal_armor_delay, dt, timeout,
+      ban_shoot_duration, gimbal_switch_duration, ban_shoot_duration2, gimbal_switch_duration2, max_switch_angle,
+      min_switch_angle, min_shoot_beforehand_vel, min_vel_track_diagonal_armor, max_chassis_angular_vel,
+      track_rotate_target_delay, track_move_target_delay;
   int min_fit_switch_count;
 };
 
@@ -82,7 +84,7 @@ public:
   void getSelectedArmorPosAndVel(geometry_msgs::Point& armor_pos, geometry_msgs::Vector3& armor_vel,
                                  geometry_msgs::Point pos, geometry_msgs::Vector3 vel, double yaw, double v_yaw,
                                  double r1, double r2, double dz, int armors_num);
-  void judgeShootBeforehand(const ros::Time& time);
+  void judgeShootBeforehand(const ros::Time& time, double v_yaw);
   void bulletModelPub(const geometry_msgs::TransformStamped& odom2pitch, const ros::Time& time);
   void identifiedTargetChangeCB(const std_msgs::BoolConstPtr& msg);
   void reconfigCB(rm_gimbal_controllers::BulletSolverConfig& config, uint32_t);
@@ -95,6 +97,7 @@ private:
   std::shared_ptr<realtime_tools::RealtimePublisher<std_msgs::Float64>> fly_time_pub_;
   ros::Subscriber identified_target_change_sub_;
   ros::Time switch_armor_time_{};
+  ros::Time last_track_diagonal_armor_time_{};
   realtime_tools::RealtimeBuffer<Config> config_rt_buffer_;
   dynamic_reconfigure::Server<rm_gimbal_controllers::BulletSolverConfig>* d_srv_{};
   Config config_{};
@@ -107,11 +110,16 @@ private:
   int count_;
   bool track_target_;
   bool identified_target_change_ = true;
+  bool is_track_diagonal_armor_ = false;
   bool is_in_delay_before_switch_{};
   bool dynamic_reconfig_initialized_{};
 
   geometry_msgs::Point target_pos_{};
   visualization_msgs::Marker marker_desire_;
   visualization_msgs::Marker marker_real_;
+
+  ros::NodeHandle nh;
+  rm_msgs::TrackData msg;
+  ros::Publisher pub = nh.advertise<rm_msgs::TrackData>("/test", 10);
 };
 }  // namespace rm_gimbal_controllers
