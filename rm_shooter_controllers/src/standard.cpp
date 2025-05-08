@@ -40,6 +40,8 @@
 #include <pluginlib/class_list_macros.hpp>
 #include "rm_shooter_controllers/standard.h"
 
+#include <rm_common/math_utilities.h>
+
 namespace rm_shooter_controllers
 {
 bool Controller::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh)
@@ -340,14 +342,15 @@ void Controller::judgeBulletShoot(const ros::Time& time, const ros::Duration& pe
 {
   if (state_ != STOP)
   {
-    if (abs(ctrls_friction_[0][0]->joint_.getVelocity()) - last_wheel_speed_ > config_.wheel_speed_raise_threshold &&
-        wheel_speed_drop_)
+    double current_speed = abs(ctrls_friction_[0][0]->joint_.getVelocity());
+    filtered_wheel_speed_ = filter_alpha * current_speed + (1 - filter_alpha) * filtered_wheel_speed_;
+    if (filtered_wheel_speed_ - last_wheel_speed_ > config_.wheel_speed_raise_threshold && wheel_speed_drop_)
     {
       wheel_speed_raise_ = true;
       wheel_speed_drop_ = false;
     }
 
-    if (last_wheel_speed_ - abs(ctrls_friction_[0][0]->joint_.getVelocity()) > config_.wheel_speed_drop_threshold &&
+    if (last_wheel_speed_ - filtered_wheel_speed_ > config_.wheel_speed_drop_threshold &&
         abs(ctrls_friction_[0][0]->joint_.getVelocity()) > 300. && wheel_speed_raise_)
     {
       wheel_speed_drop_ = true;
@@ -355,8 +358,8 @@ void Controller::judgeBulletShoot(const ros::Time& time, const ros::Duration& pe
       has_shoot_ = true;
     }
   }
-  double friction_change_vel = abs(ctrls_friction_[0][0]->joint_.getVelocity()) - last_wheel_speed_;
-  last_wheel_speed_ = abs(ctrls_friction_[0][0]->joint_.getVelocity());
+  double friction_change_vel = filtered_wheel_speed_ - last_wheel_speed_;
+  last_wheel_speed_ = filtered_wheel_speed_;
   count_++;
   if (has_shoot_last_)
   {

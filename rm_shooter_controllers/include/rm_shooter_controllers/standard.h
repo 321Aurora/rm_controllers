@@ -103,7 +103,8 @@ private:
   double anti_friction_block_duty_cycle_{}, anti_friction_block_vel_{};
   bool has_shoot_ = false, has_shoot_last_ = false;
   bool wheel_speed_raise_ = true, wheel_speed_drop_ = true;
-  double last_wheel_speed_{};
+  double last_wheel_speed_{}, filtered_wheel_speed_{};
+  double filter_alpha = 0.1;
 
   ros::Time last_shoot_time_, block_time_, last_block_time_;
   enum
